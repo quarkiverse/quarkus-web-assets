@@ -8,6 +8,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
@@ -61,7 +62,7 @@ public class DevModeBundlingProcessor {
             boolean shouldShutdownTheBroker = bundlesBuildContext == null
                     || watch == null
                     || !watch.isAlive()
-                    || !WebBundlerConfig.isEqual(config, bundlesBuildContext.config());
+                    || !Objects.equals(config, bundlesBuildContext.config());
             if (!shouldShutdownTheBroker) {
                 try {
                     if (readyForBundling.started() == null) {

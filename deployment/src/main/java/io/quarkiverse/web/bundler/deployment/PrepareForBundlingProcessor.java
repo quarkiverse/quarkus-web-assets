@@ -116,7 +116,7 @@ public class PrepareForBundlingProcessor {
                 && prepareForBundlingContext != null;
         final long started = Instant.now().toEpochMilli();
         if (isLiveReload
-                && WebBundlerConfig.isEqual(config, prepareForBundlingContext.config())
+                && Objects.equals(config, prepareForBundlingContext.config())
                 && Objects.equals(installedWebDependencies.list(), prepareForBundlingContext.dependencies())
                 && !liveReload.getChangedResources().contains(config.fromWebRoot("tsconfig.json"))
                 && entryPoints.equals(prepareForBundlingContext.entryPoints())) {

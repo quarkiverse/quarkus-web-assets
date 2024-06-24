@@ -167,22 +167,6 @@ public interface WebBundlerConfig {
                     || "yes".equalsIgnoreCase(sourceMap());
         }
 
-        static boolean isEqual(BundlingConfig c1, BundlingConfig c2) {
-
-            if (c1 == c2) {
-                return true;
-            }
-            if (c1 == null || c2 == null) {
-                return false;
-            }
-
-            return Objects.equals(c1.splitting(), c2.splitting())
-                    && LoadersConfig.isEqual(c1.loaders(), c2.loaders())
-                    && Objects.equals(c1.external(), c2.external())
-                    && Objects.equals(c1.envs(), c2.envs())
-                    && Objects.equals(c1.sourceMap(), c2.sourceMap());
-        }
-
     }
 
     interface WebDependenciesConfig {
@@ -210,20 +194,6 @@ public interface WebBundlerConfig {
          * Auto import configuration
          */
         AutoImportConfig autoImport();
-
-        static boolean isEqual(WebDependenciesConfig c1, WebDependenciesConfig c2) {
-
-            if (c1 == c2) {
-                return true;
-            }
-            if (c1 == null || c2 == null) {
-                return false;
-            }
-
-            return Objects.equals(c1.nodeModules(), c2.nodeModules())
-                    && Objects.equals(c1.compileOnly(), c2.compileOnly())
-                    && AutoImportConfig.isEqual(c1.autoImport(), c2.autoImport());
-        }
 
     }
 
@@ -258,17 +228,6 @@ public interface WebBundlerConfig {
             return mode() != Mode.NONE;
         }
 
-        static boolean isEqual(AutoImportConfig c1, AutoImportConfig c2) {
-
-            if (c1 == c2) {
-                return true;
-            }
-            if (c1 == null || c2 == null) {
-                return false;
-            }
-
-            return Objects.equals(c1.mode(), c2.mode());
-        }
     }
 
     interface LoadersConfig {
@@ -358,32 +317,6 @@ public interface WebBundlerConfig {
         @WithDefault("json")
         Optional<Set<String>> json();
 
-        static boolean isEqual(LoadersConfig c1, LoadersConfig c2) {
-
-            if (c1 == c2) {
-                return true;
-            }
-            if (c1 == null || c2 == null) {
-                return false;
-            }
-
-            return Objects.equals(c1.js(), c2.js())
-                    && Objects.equals(c1.jsx(), c2.jsx())
-                    && Objects.equals(c1.tsx(), c2.tsx())
-                    && Objects.equals(c1.ts(), c2.ts())
-                    && Objects.equals(c1.css(), c2.css())
-                    && Objects.equals(c1.localCss(), c2.localCss())
-                    && Objects.equals(c1.globalCss(), c2.globalCss())
-                    && Objects.equals(c1.file(), c2.file())
-                    && Objects.equals(c1.copy(), c2.copy())
-                    && Objects.equals(c1.base64(), c2.base64())
-                    && Objects.equals(c1.binary(), c2.binary())
-                    && Objects.equals(c1.dataUrl(), c2.dataUrl())
-                    && Objects.equals(c1.empty(), c2.empty())
-                    && Objects.equals(c1.text(), c2.text())
-                    && Objects.equals(c1.json(), c2.json());
-        }
-
     }
 
     interface EntryPointConfig {
@@ -423,46 +356,6 @@ public interface WebBundlerConfig {
             return key().filter(not(String::isBlank)).orElse(mapKey);
         }
 
-        static boolean isEqual(EntryPointConfig c1, EntryPointConfig c2) {
-
-            if (c1 == c2) {
-                return true;
-            }
-            if (c1 == null || c2 == null) {
-                return false;
-            }
-
-            return Objects.equals(c1.enabled(), c2.enabled())
-                    && Objects.equals(c1.dir(), c2.dir())
-                    && Objects.equals(c1.key(), c2.key())
-                    && Objects.equals(c1.quteTags(), c2.quteTags());
-        }
-
-    }
-
-    static boolean isEqual(WebBundlerConfig c1, WebBundlerConfig c2) {
-
-        if (c1 == c2) {
-            return true;
-        }
-        if (c1 == null || c2 == null) {
-            return false;
-        }
-
-        for (Map.Entry<String, EntryPointConfig> entry : c1.bundle().entrySet()) {
-            if (!EntryPointConfig.isEqual(entry.getValue(), c2.bundle().get(entry.getKey()))) {
-                return false;
-            }
-        }
-
-        return Objects.equals(c1.webRoot(), c2.webRoot())
-                && Objects.equals(c1.bundle(), c2.bundle())
-                && Objects.equals(c1.staticDir(), c2.staticDir())
-                && Objects.equals(c1.bundlePath(), c2.bundlePath())
-                && BundlingConfig.isEqual(c1.bundling(), c2.bundling())
-                && WebDependenciesConfig.isEqual(c1.dependencies(), c2.dependencies())
-                && Objects.equals(c1.bundleRedirect(), c2.bundleRedirect())
-                && Objects.equals(c1.charset(), c2.charset());
     }
 
 }

@@ -64,7 +64,7 @@ class WebDependenciesProcessor {
                 .getContextObject(InstalledWebDependenciesContext.class);
         final Path nodeModulesDir = resolveNodeModulesDir(config, outputTarget);
         if (liveReload.isLiveReload() && installedWebDependenciesContext != null
-                && WebBundlerConfig.WebDependenciesConfig.isEqual(config.dependencies(),
+                && Objects.equals(config.dependencies(),
                         installedWebDependenciesContext.config().dependencies())
                 && nodeModulesDir.equals(installedWebDependenciesContext.nodeModulesDir())
                 && installedWebDependenciesContext.dependencies().equals(webDependencies.list())) {

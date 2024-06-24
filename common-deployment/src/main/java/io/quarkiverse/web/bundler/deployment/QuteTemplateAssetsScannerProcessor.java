@@ -4,6 +4,7 @@ import static io.quarkiverse.web.bundler.deployment.BundleWebAssetsScannerProces
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Objects;
 
 import org.jboss.logging.Logger;
 
@@ -26,7 +27,7 @@ public class QuteTemplateAssetsScannerProcessor {
         final HtmlTemplatesContext context = liveReload.getContextObject(HtmlTemplatesContext.class);
         if (liveReload.isLiveReload()
                 && context != null
-                && WebBundlerConfig.isEqual(config, context.config())
+                && Objects.equals(config, context.config())
                 && !hasChanged(config, liveReload, s -> s.substring(config.webRoot().length()).matches("^/.+\\.html$"))) {
             LOGGER.debug("Web bundler html templates scan not needed for live reload");
             return new QuteTemplatesBuildItem(context.assets());

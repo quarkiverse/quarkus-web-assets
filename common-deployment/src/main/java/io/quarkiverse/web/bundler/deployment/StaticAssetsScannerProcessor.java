@@ -4,6 +4,7 @@ import static io.quarkiverse.web.bundler.deployment.BundleWebAssetsScannerProces
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Objects;
 
 import org.jboss.logging.Logger;
 
@@ -26,7 +27,7 @@ public class StaticAssetsScannerProcessor {
         final StaticAssetsContext context = liveReload.getContextObject(StaticAssetsContext.class);
         if (liveReload.isLiveReload()
                 && context != null
-                && WebBundlerConfig.isEqual(config, context.config())
+                && Objects.equals(config, context.config())
                 && !hasChanged(config, liveReload, s -> s.startsWith(config.fromWebRoot(config.staticDir())))) {
             LOGGER.debug("Web bundler static assets scan not needed for live reload");
             return new StaticAssetsBuildItem(context.assets());
