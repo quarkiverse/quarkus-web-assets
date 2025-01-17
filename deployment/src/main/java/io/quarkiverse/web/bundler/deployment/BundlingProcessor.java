@@ -1,24 +1,26 @@
 package io.quarkiverse.web.bundler.deployment;
 
-import static io.quarkiverse.web.bundler.deployment.StaticWebAssetsProcessor.makePublic;
-import static io.quarkiverse.web.bundler.deployment.items.BundleWebAsset.BundleType.GENERATED_ENTRY_POINT;
 import static io.quarkiverse.web.bundler.deployment.util.PathUtils.*;
 import static io.quarkus.deployment.annotations.ExecutionTime.STATIC_INIT;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import org.jboss.logging.Logger;
 
 import io.mvnpm.esbuild.Bundler;
-import io.mvnpm.esbuild.model.*;
-import io.quarkiverse.web.bundler.deployment.items.*;
+import io.mvnpm.esbuild.model.BundleResult;
+import io.quarkiverse.web.bundler.deployment.items.GeneratedBundleBuildItem;
+import io.quarkiverse.web.bundler.deployment.items.GeneratedEntryPointBuildItem;
+import io.quarkiverse.web.bundler.deployment.items.ReadyForBundlingBuildItem;
 import io.quarkiverse.web.bundler.deployment.web.GeneratedWebResourceBuildItem;
 import io.quarkiverse.web.bundler.deployment.web.GeneratedWebResourceBuildItem.SourceType;
 import io.quarkiverse.web.bundler.runtime.Bundle;
@@ -62,24 +64,22 @@ class BundlingProcessor {
             }
 
             handleBundleDistDir(config, generatedBundleProducer, staticResourceProducer, result.dist(), startedBundling);
-            processGeneratedEntryPoints(config, readyForBundling.bundleOptions().workDir(), generatedEntryPointProducer);
+            processGeneratedEntryPoints(readyForBundling.bundleOptions().workDir(), generatedEntryPointProducer);
             return result;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
     }
 
-    static void processGeneratedEntryPoints(WebBundlerConfig config, Path targetDir,
+    static void processGeneratedEntryPoints(Path targetDir,
             BuildProducer<GeneratedEntryPointBuildItem> generatedEntryPointProducer) {
         try (Stream<Path> generatedEPStream = Files.find(targetDir, 1, (path, basicFileAttributes) -> Files.isRegularFile(path)
                 && path.getFileName().toString().toLowerCase().endsWith(".js"))) {
             generatedEPStream
                     .forEach(p -> {
                         final String key = p.getFileName().toString().replace(".js", "");
-                        final DefaultWebAsset wa = new DefaultWebAsset(join(config.webRoot(), p.getFileName().toString()), p,
-                                Charset.defaultCharset());
                         generatedEntryPointProducer
-                                .produce(new GeneratedEntryPointBuildItem(key, new BundleWebAsset(wa, GENERATED_ENTRY_POINT)));
+                                .produce(new GeneratedEntryPointBuildItem(key, p.getFileName().toString()));
                     });
 
         } catch (IOException e) {
@@ -109,7 +109,8 @@ class BundlingProcessor {
                     if (config.shouldQuarkusServeBundle()) {
                         // The root-path will already be added by the static resources handler
                         final String resourcePath = surroundWithSlashes(config.bundlePath()) + relativePath;
-                        makePublic(staticResourceProducer, resourcePath, path.normalize(), SourceType.BUNDLED_ASSET);
+                        staticResourceProducer.produce(GeneratedWebResourceBuildItem.fromFile(resourcePath, path.normalize(),
+                                SourceType.BUNDLED_ASSET));
                     }
                 });
             }

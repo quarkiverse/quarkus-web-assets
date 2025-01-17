@@ -4,49 +4,43 @@ import static java.util.Objects.requireNonNull;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.StringJoiner;
 
 import io.quarkus.builder.item.MultiBuildItem;
 
 public final class EntryPointBuildItem extends MultiBuildItem {
 
-    private final String entryPointKey;
+    private final EntryPoint entryPoint;
 
-    private final List<BundleWebAsset> webAssets;
-
-    public EntryPointBuildItem(String entryPointKey, List<BundleWebAsset> webAssets) {
-        this.entryPointKey = requireNonNull(entryPointKey, "key is required");
-        this.webAssets = requireNonNull(webAssets, "webAssets is required");
+    public EntryPointBuildItem(EntryPoint entryPoint) {
+        this.entryPoint = requireNonNull(entryPoint, "entryPoint is required");
     }
 
-    public String getEntryPointKey() {
-        return entryPointKey;
+    public String key() {
+        return entryPoint.key();
     }
 
-    public List<BundleWebAsset> getWebAssets() {
-        return webAssets;
+    public String dir() {
+        return entryPoint.dir();
+    }
+
+    public List<BundleWebAsset> assets() {
+        return entryPoint.assets();
     }
 
     @Override
     public boolean equals(Object o) {
-        if (this == o)
-            return true;
         if (o == null || getClass() != o.getClass())
             return false;
         EntryPointBuildItem that = (EntryPointBuildItem) o;
-        return Objects.equals(entryPointKey, that.entryPointKey) && Objects.equals(webAssets, that.webAssets);
+        return Objects.equals(entryPoint, that.entryPoint);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(entryPointKey, webAssets);
+        return Objects.hashCode(entryPoint);
     }
 
-    @Override
-    public String toString() {
-        return new StringJoiner(", ", EntryPointBuildItem.class.getSimpleName() + "[", "]")
-                .add("entryPointKey='" + entryPointKey + "'")
-                .add("webAssets=" + webAssets)
-                .toString();
+    public record EntryPoint(String key, String dir, List<BundleWebAsset> assets) {
+
     }
 }

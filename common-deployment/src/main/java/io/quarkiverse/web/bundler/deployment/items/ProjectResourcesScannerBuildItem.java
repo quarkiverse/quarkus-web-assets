@@ -9,16 +9,13 @@ import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import org.jboss.logging.Logger;
 
+import io.quarkiverse.web.bundler.deployment.util.PathUtils;
 import io.quarkus.builder.item.SimpleBuildItem;
 import io.quarkus.deployment.ApplicationArchive;
 import io.quarkus.fs.util.ZipUtils;
@@ -31,13 +28,31 @@ public final class ProjectResourcesScannerBuildItem extends SimpleBuildItem {
     Set<ApplicationArchive> allApplicationArchives;
     List<ResolvedDependency> extensionArtifacts;
     private final List<Path> srcResourcesDirs;
+    private final List<Path> localDirs;
+    private final String resourceWebDir;
 
     public ProjectResourcesScannerBuildItem(Set<ApplicationArchive> allApplicationArchives,
             List<ResolvedDependency> extensionArtifacts,
-            List<Path> srcResourcesDirs) {
+            List<Path> srcResourcesDirs,
+            List<Path> localDirs,
+            String resourceWebDir) {
         this.allApplicationArchives = allApplicationArchives;
         this.extensionArtifacts = extensionArtifacts;
         this.srcResourcesDirs = srcResourcesDirs;
+        this.localDirs = localDirs;
+        this.resourceWebDir = resourceWebDir;
+    }
+
+    public List<String> webDirs() {
+        List<String> watchedDirs = new ArrayList<>();
+        watchedDirs.add(resourceWebDir);
+        localDirs.forEach(dir -> watchedDirs.add(dir.toString()));
+        return watchedDirs;
+    }
+
+    public boolean hasWebStuffChanged(Set<String> changedResource) {
+        return changedResource.stream().anyMatch(s -> webDirs().stream()
+                .anyMatch(s::startsWith));
     }
 
     public List<WebAsset> scan(String dir, String pathMatcher, Charset charset) throws IOException {
@@ -64,19 +79,21 @@ public final class ProjectResourcesScannerBuildItem extends SimpleBuildItem {
                 continue;
             }
             for (Path rootDir : artifact.getResolvedPaths()) {
-                if (Files.isDirectory(rootDir)) {
-                    final Path dirPath = rootDir.resolve(scanner.dir());
+                Path webDir = rootDir.resolve(resourceWebDir);
+                if (Files.isDirectory(webDir)) {
+                    final Path dirPath = webDir.resolve(scanner.dir());
                     if (Files.isDirectory(dirPath) && dirPath.toString().endsWith(scanner.dir())) {
-                        scan(rootDir, dirPath, scanner.pathMatcher(), scanner.charset, webAssetConsumer, true);
+                        scan(webDir, dirPath, scanner.pathMatcher(), scanner.charset, webAssetConsumer, true);
                         break;
                     }
                 } else {
                     try (FileSystem artifactFs = ZipUtils.newFileSystem(rootDir)) {
-                        Path rootDirFs = artifactFs.getPath("/");
+
+                        Path rootDirFs = artifactFs.getPath(PathUtils.prefixWithSlash(resourceWebDir));
                         Path dirPath = artifactFs.getPath(scanner.dir());
                         if (Files.exists(dirPath)) {
                             scan(rootDirFs, dirPath, scanner.pathMatcher(), scanner.charset(), webAssetConsumer,
-                                    false);
+                                    true);
                         }
                     } catch (IOException e) {
                         LOGGER.warnf(e, "Unable to create the file system from the rootDir: %s", rootDir);
@@ -86,20 +103,35 @@ public final class ProjectResourcesScannerBuildItem extends SimpleBuildItem {
         }
         for (ApplicationArchive archive : allApplicationArchives) {
             archive.accept(tree -> {
-                for (Path rootDir : tree.getRoots()) {
-                    // Note that we cannot use ApplicationArchive.getChildPath(String) here because we would not be able to detect
-                    // a wrong directory bundleName on case-insensitive file systems
-                    try {
-                        final Path dirPath = rootDir.resolve(scanner.dir());
-                        if (Files.isDirectory(dirPath) && toUnixPath(dirPath.toString()).endsWith(scanner.dir())) {
-                            scan(rootDir, dirPath, scanner.pathMatcher(), scanner.charset, webAssetConsumer, true);
-                            break;
-                        }
-                    } catch (IOException e) {
-                        throw new UncheckedIOException(e);
-                    }
-                }
+                scanRoots(tree.getRoots().stream().map(s -> s.resolve(resourceWebDir)).toList(), scanner, webAssetConsumer,
+                        true);
             });
+        }
+        scanRoots(localDirs, scanner, webAssetConsumer, false);
+    }
+
+    private static boolean isLocalFileSystem(Path path) {
+        try {
+            return "file".equalsIgnoreCase(path.getFileSystem().provider().getScheme());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void scanRoots(Collection<Path> tree, Scanner scanner, Consumer<WebAsset> webAssetConsumer,
+            boolean classPathResource) {
+        for (Path rootDir : tree) {
+            // Note that we cannot use ApplicationArchive.getChildPath(String) here because we would not be able to detect
+            // a wrong directory bundleName on case-insensitive file systems
+            try {
+                final Path dirPath = rootDir.resolve(scanner.dir());
+                if (Files.isDirectory(dirPath) && toUnixPath(dirPath.toString()).endsWith(scanner.dir())) {
+                    scan(rootDir, dirPath, scanner.pathMatcher(), scanner.charset, webAssetConsumer, classPathResource);
+                    break;
+                }
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
         }
     }
 
@@ -109,9 +141,10 @@ public final class ProjectResourcesScannerBuildItem extends SimpleBuildItem {
             String pathMatcher,
             Charset charset,
             Consumer<WebAsset> webAssetConsumer,
-            boolean canReadLater)
+            boolean classPathResource)
             throws IOException {
         Path toScan = directory == null ? root : directory;
+        boolean canReadLater = isLocalFileSystem(toScan);
         try (Stream<Path> files = Files.find(toScan, 20, (p, a) -> Files.isRegularFile(p))) {
             Iterator<Path> iter = files.iterator();
             while (iter.hasNext()) {
@@ -130,10 +163,11 @@ public final class ProjectResourcesScannerBuildItem extends SimpleBuildItem {
                     if (assetPath.contains("\\")) {
                         assetPath = toUnixPath(assetPath);
                     }
+
                     if (!assetPath.isEmpty()) {
-                        final Path srcFilePath = canReadLater ? findSrc(assetPath) : null;
+                        final Path srcFilePath = classPathResource ? (canReadLater ? findSrc(assetPath) : null) : filePath;
                         webAssetConsumer.accept(toWebAsset(assetPath,
-                                filePath.normalize(), srcFilePath, charset, canReadLater));
+                                filePath.normalize(), srcFilePath, classPathResource, charset, canReadLater));
                     }
                 }
             }
@@ -142,7 +176,7 @@ public final class ProjectResourcesScannerBuildItem extends SimpleBuildItem {
 
     Path findSrc(String assetPath) {
         for (Path srcResourcesDir : this.srcResourcesDirs) {
-            final Path absolutePath = srcResourcesDir.resolve(assetPath);
+            final Path absolutePath = srcResourcesDir.resolve(resourceWebDir).resolve(assetPath);
             if (Files.isRegularFile(absolutePath)) {
                 if (LOGGER.isDebugEnabled()) {
                     LOGGER.debugf("found source for %s in %s", assetPath, absolutePath);
@@ -153,11 +187,15 @@ public final class ProjectResourcesScannerBuildItem extends SimpleBuildItem {
         return null;
     }
 
-    static WebAsset toWebAsset(String resourcePath, Path filePath, Path srcFilePath, Charset charset, boolean canReadLater) {
-        return new DefaultWebAsset(resourcePath,
-                canReadLater ? new WebAsset.Resource(filePath) : new WebAsset.Resource(readTemplateContent(filePath)),
-                Optional.ofNullable(srcFilePath),
-                charset);
+    WebAsset toWebAsset(String webPath, Path filePath, Path srcFilePath, boolean classPathResource, Charset charset,
+            boolean canReadLater) {
+        if (canReadLater) {
+            final boolean isSource = srcFilePath != null;
+            String watchedPath = classPathResource ? PathUtils.join(resourceWebDir, webPath)
+                    : PathUtils.toUnixPath(filePath.toString());
+            return new FileWebAsset(webPath, isSource ? srcFilePath : filePath, watchedPath, isSource, charset);
+        }
+        return new ContentWebAsset(webPath, readTemplateContent(filePath), charset);
     }
 
     private boolean isApplicationArchive(ResolvedDependency dependency, Set<ApplicationArchive> applicationArchives) {
@@ -182,5 +220,8 @@ public final class ProjectResourcesScannerBuildItem extends SimpleBuildItem {
     }
 
     public record Scanner(String dir, String pathMatcher, Charset charset) {
+        public Scanner(String pathMatcher, Charset charset) {
+            this("", pathMatcher, charset);
+        }
     }
 }

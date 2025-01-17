@@ -11,7 +11,7 @@ class WebBundlerQuteTemplateRootProcessor {
     void provideWebTemplateRoot(
             BuildProducer<TemplateRootBuildItem> templateRootProducer,
             WebBundlerConfig config) {
-        templateRootProducer.produce(new TemplateRootBuildItem(config.fromWebRoot("templates")));
+        templateRootProducer.produce(new TemplateRootBuildItem(config.prefixWithWebRoot("templates")));
     }
 
 }

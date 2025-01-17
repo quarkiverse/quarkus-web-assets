@@ -22,21 +22,40 @@ import io.smallrye.config.WithParentName;
 @ConfigMapping(prefix = "quarkus.web-bundler")
 @ConfigRoot(phase = ConfigPhase.BUILD_TIME)
 public interface WebBundlerConfig {
+
+    String MAIN_ENTRYPOINT_KEY = "main";
+    String APP_KEY = "app";
+
     /**
      * The directory in the resources which serves as root for the web assets
      */
     @WithDefault("web")
     String webRoot();
 
-    default String fromWebRoot(String dir) {
+    default String prefixWithWebRoot(String dir) {
         return join(webRoot(), dir);
     }
+
+    /**
+     * The directory in the project root dir which contains web assets (relative to the project root)
+     */
+    @WithDefault("web")
+    Optional<String> projectWebDir();
 
     /**
      * Bundle entry points config for scripts and styles
      */
     @ConfigDocDefault("if not overridden, by default, 'app' directory will be bundled with 'main' as entry point key")
     Map<String, EntryPointConfig> bundle();
+
+    default Map<String, EntryPointConfig> bundleWithDefault() {
+        if (bundle().containsKey(APP_KEY)) {
+            return bundle();
+        }
+        Map<String, EntryPointConfig> conf = new HashMap<>(bundle());
+        conf.put(APP_KEY, new ConfiguredEntryPoint(APP_KEY, APP_KEY, MAIN_ENTRYPOINT_KEY));
+        return conf;
+    }
 
     /**
      * Resources located in {quarkus.web-bundler.web-root}/{quarkus.web-bundler.static} will be served by Quarkus.
@@ -198,10 +217,9 @@ public interface WebBundlerConfig {
          * When a runtime scope web dependency is used, the dependency will be present in the target app and served at runtime.
          * When a compile only scope web dependency is used, the dependency will only be used at build time and will not be
          * present in the target app.
-         *
+         * <p>
          * WARNING: Maven compile scope is considered as a runtime scope, use 'provided' for compile only. On Gradle,
          * 'compileOnly' is compile only.
-         *
          */
         @WithDefault("true")
         boolean compileOnly();
@@ -232,7 +250,7 @@ public interface WebBundlerConfig {
         enum Mode {
             ALL,
             STYLES,
-            NONE;
+            NONE
         }
 
         /**
@@ -240,9 +258,9 @@ public interface WebBundlerConfig {
          * all: auto-import all web dependencies (scripts and styles)
          * styles: auto-import only styles web dependencies (scss, sass, css)
          * none: disable auto-import
-         *
+         * <p>
          * ** Only direct dependencies are auto-imported, not transitive ones.**
-         *
+         * <p>
          * This is using the dependencies package.json (module, main, style, scss, saas fields) to detect the presence of source
          * scripts and styles:
          * - For all libraries enriching your html experience (htmx, hypercript, lazyload, ...), you don't necessarily need a

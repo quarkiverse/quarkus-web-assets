@@ -31,20 +31,25 @@ public class StaticWebAssetsProcessor {
         final boolean browserLiveReload = launchMode.getLaunchMode().equals(LaunchMode.DEVELOPMENT)
                 && config.browserLiveReload();
         for (WebAsset webAsset : staticAssets.getWebAssets()) {
-            final String publicPath = webAsset.pathFromWebRoot(config.webRoot());
+            final String publicPath = webAsset.relativePath();
             final Path targetPath = targetDir.dist().resolve(publicPath);
             try {
-                if (!webAsset.isFile()) {
-                    makeWebAssetPublic(staticResourceProducer, prefixWithSlash(publicPath), webAsset, SourceType.STATIC_ASSET);
+                if (webAsset.path().isEmpty()) {
+                    staticResourceProducer.produce(GeneratedWebResourceBuildItem.fromContent(
+                            prefixWithSlash(publicPath),
+                            webAsset.content(), SourceType.STATIC_ASSET));
                 } else {
                     if (browserLiveReload) {
                         Files.createDirectories(targetPath.getParent());
                         createSymbolicLinkOrFallback(watchedFileBuildItemProducer, webAsset, targetPath);
-                        makePublic(staticResourceProducer, prefixWithSlash(publicPath), targetPath, SourceType.STATIC_ASSET);
+                        staticResourceProducer.produce(GeneratedWebResourceBuildItem.fromFile(
+                                prefixWithSlash(publicPath),
+                                targetPath, SourceType.STATIC_ASSET));
                     } else {
                         // We can read the file
-                        handleStaticResource(staticResourceProducer, prefixWithSlash(publicPath),
-                                new WebAsset.Resource(webAsset.resource().contentOrReadFromFile()), SourceType.STATIC_ASSET);
+                        staticResourceProducer.produce(GeneratedWebResourceBuildItem.fromContent(
+                                prefixWithSlash(publicPath),
+                                webAsset.content(), SourceType.STATIC_ASSET));
                     }
 
                 }
@@ -52,36 +57,6 @@ public class StaticWebAssetsProcessor {
                 throw new UncheckedIOException(e);
             }
         }
-    }
-
-    static void makeWebAssetPublic(
-            BuildProducer<GeneratedWebResourceBuildItem> staticResourceProducer,
-            String publicPath,
-            WebAsset webAsset,
-            SourceType sourceType) {
-        handleStaticResource(
-                staticResourceProducer,
-                publicPath,
-                webAsset.resource(),
-                sourceType);
-    }
-
-    static void makePublic(BuildProducer<GeneratedWebResourceBuildItem> staticResourceProducer, String publicPath,
-            Path path, SourceType sourceType) {
-        if (!Files.exists(path)) {
-            return;
-        }
-        handleStaticResource(staticResourceProducer, publicPath, new WebAsset.Resource(path), sourceType);
-    }
-
-    private static void handleStaticResource(
-            BuildProducer<GeneratedWebResourceBuildItem> staticResourceProducer,
-            String publicPath,
-            WebAsset.Resource resource,
-            SourceType sourceType) {
-        staticResourceProducer.produce(new GeneratedWebResourceBuildItem(
-                publicPath,
-                resource, sourceType));
     }
 
 }

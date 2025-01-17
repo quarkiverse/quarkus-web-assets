@@ -1,6 +1,5 @@
 package io.quarkiverse.web.bundler.deployment;
 
-import static io.quarkiverse.web.bundler.deployment.StaticWebAssetsProcessor.makeWebAssetPublic;
 import static io.quarkiverse.web.bundler.deployment.util.PathUtils.prefixWithSlash;
 import static java.util.concurrent.CompletableFuture.completedFuture;
 
@@ -8,9 +7,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.net.URL;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -29,17 +26,17 @@ import io.quarkiverse.web.bundler.runtime.Bundle;
 import io.quarkus.deployment.annotations.BuildProducer;
 import io.quarkus.deployment.annotations.BuildStep;
 import io.quarkus.deployment.builditem.LaunchModeBuildItem;
-import io.quarkus.deployment.builditem.LiveReloadBuildItem;
 import io.quarkus.qute.*;
 
 public class QuteTemplateWebAssetsProcessor {
     @BuildStep
-    void processHtmlTemplateWebAssets(WebBundlerConfig config,
-            QuteTemplatesBuildItem htmlTemplates,
+    void processHtmlTemplateWebAssets(QuteTemplatesBuildItem htmlTemplates,
             GeneratedBundleBuildItem generatedBundle,
             BuildProducer<GeneratedWebResourceBuildItem> staticResourceProducer,
-            LiveReloadBuildItem liveReload,
             LaunchModeBuildItem launchMode) {
+        if (htmlTemplates.getWebAssets().isEmpty()) {
+            return;
+        }
         final Map<String, String> bundle = generatedBundle != null ? generatedBundle.getBundle() : Map.of();
         final Bundle.Mapping mapping = new Bundle.Mapping() {
             @Override
@@ -70,10 +67,10 @@ public class QuteTemplateWebAssetsProcessor {
                 .addResultMapper(new HtmlEscaper(ImmutableList.of("text/html", "text/xml")))
                 .build();
         for (WebAsset webAsset : htmlTemplates.getWebAssets()) {
-            final byte[] bytes = webAsset.resource().contentOrReadFromFile();
+            final byte[] bytes = webAsset.content();
             final String content = engine.parse(new String(bytes, webAsset.charset())).render();
-            makeWebAssetPublic(staticResourceProducer, prefixWithSlash(webAsset.pathFromWebRoot(config.webRoot())),
-                    HtmlPageWebAsset.of(webAsset, content), SourceType.BUILD_TIME_TEMPLATE);
+            staticResourceProducer.produce(GeneratedWebResourceBuildItem.fromContent(prefixWithSlash(webAsset.relativePath()),
+                    content.getBytes(), SourceType.BUILD_TIME_TEMPLATE));
         }
     }
 
@@ -125,23 +122,5 @@ public class QuteTemplateWebAssetsProcessor {
             });
         }
 
-    }
-
-    record HtmlPageWebAsset(String resourceName, byte[] content, Charset charset) implements WebAsset {
-
-        static HtmlPageWebAsset of(WebAsset sourceAsset, String content) {
-            return new HtmlPageWebAsset(sourceAsset.resourceName(), content.getBytes(sourceAsset.charset()),
-                    sourceAsset.charset());
-        }
-
-        @Override
-        public Resource resource() {
-            return new Resource(content());
-        }
-
-        @Override
-        public Optional<Path> srcFilePath() {
-            return Optional.empty();
-        }
     }
 }
