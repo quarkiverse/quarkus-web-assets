@@ -1,7 +1,7 @@
 package io.quarkiverse.web.bundler.deployment;
 
-import static io.quarkiverse.web.bundler.deployment.BundleWebAssetsScannerProcessor.MAIN_ENTRYPOINT_KEY;
-import static io.quarkiverse.web.bundler.deployment.BundleWebAssetsScannerProcessor.enableBundlingWatch;
+import static io.quarkiverse.web.bundler.deployment.BundleWebAssetsScannerProcessor.*;
+import static io.quarkiverse.web.bundler.deployment.WebBundlerConfig.MAIN_ENTRYPOINT_KEY;
 import static io.quarkiverse.web.bundler.deployment.items.BundleWebAsset.BundleType.MANUAL;
 import static io.quarkiverse.web.bundler.deployment.util.PathUtils.join;
 import static io.quarkiverse.web.bundler.deployment.web.GeneratedWebResourcesProcessor.WEB_BUNDLER_LIVE_RELOAD_PATH;
@@ -113,30 +113,34 @@ public class PrepareForBundlingProcessor {
         final boolean isLiveReload = liveReload.isLiveReload()
                 && prepareForBundlingContext != null;
         final long started = Instant.now().toEpochMilli();
-        boolean shouldWatch = config.browserLiveReload() && enableBundlingWatch.get();
+        boolean useEsbuildWatch = config.browserLiveReload() && SYMLINK_AVAILABLE.get();
         if (isLiveReload
                 && WebBundlerConfig.isEqual(config, prepareForBundlingContext.config())
                 && Objects.equals(installedWebDependencies.list(), prepareForBundlingContext.dependencies())
-                && !liveReload.getChangedResources().contains(config.fromWebRoot("tsconfig.json"))
+                && bundleConfig.map(b -> b.getWebAssets().stream().map(WebAsset::watchedPath).filter(Optional::isPresent)
+                        .map(Optional::get)
+                        .noneMatch(liveReload.getChangedResources()::contains)).orElse(true)
                 && entryPoints.equals(prepareForBundlingContext.entryPoints())
-                && entryPoints.stream().map(EntryPointBuildItem::getWebAssets).flatMap(List::stream)
-                        .map(WebAsset::resourceName)
+                && entryPoints.stream().map(EntryPointBuildItem::assets).flatMap(List::stream)
+                        .map(WebAsset::watchedPath)
+                        .filter(Optional::isPresent)
+                        .map(Optional::get)
                         .noneMatch(liveReload.getChangedResources()::contains)) {
-            if (shouldWatch) {
-                // We need to set non-restart watched file again
-                for (EntryPointBuildItem entryPoint : entryPoints) {
-                    for (BundleWebAsset webAsset : entryPoint.getWebAssets()) {
-                        if (webAsset.isFile() && webAsset.srcFilePath().isPresent()) {
-                            watchedFiles.produce(HotDeploymentWatchedFileBuildItem.builder()
-                                    .setRestartNeeded(false)
-                                    .setLocation(webAsset.resourceName())
-                                    .build());
-                        }
+            // We need to set non-restart watched file again
+            for (EntryPointBuildItem entryPoint : entryPoints) {
+                for (BundleWebAsset webAsset : entryPoint.assets()) {
+                    if (webAsset.watchedPath().isPresent() && webAsset.path().isPresent()) {
+                        boolean restartNeeded = !useEsbuildWatch || !webAsset.isSource();
+                        watchedFiles.produce(HotDeploymentWatchedFileBuildItem.builder()
+                                .setRestartNeeded(restartNeeded)
+                                .setLocation(webAsset.watchedPath().get())
+                                .build());
                     }
+
                 }
             }
             return new ReadyForBundlingBuildItem(prepareForBundlingContext.bundleOptions(), null, targetDir.dist(),
-                    shouldWatch);
+                    useEsbuildWatch);
         }
 
         try {
@@ -146,8 +150,8 @@ public class PrepareForBundlingProcessor {
                     && config.browserLiveReload();
             if (bundleConfig.isPresent()) {
                 for (WebAsset webAsset : bundleConfig.get().getWebAssets()) {
-                    final Path targetConfig = targetDir.webBundler().resolve(webAsset.pathFromWebRoot(config.webRoot()));
-                    createAsset(watchedFiles, webAsset, targetConfig, browserLiveReload);
+                    final Path targetConfig = targetDir.webBundler().resolve(webAsset.relativePath());
+                    createAsset(config, watchedFiles, webAsset, targetConfig, browserLiveReload);
                 }
             }
 
@@ -190,13 +194,14 @@ public class PrepareForBundlingProcessor {
                     .valueOf(config.dependencies().autoImport().mode().toString());
             for (EntryPointBuildItem entryPoint : entryPoints) {
                 final List<String> scripts = new ArrayList<>();
-                for (BundleWebAsset webAsset : entryPoint.getWebAssets()) {
-                    String destination = webAsset.pathFromWebRoot(config.webRoot());
+                for (BundleWebAsset webAsset : entryPoint.assets()) {
+                    String destination = webAsset.relativePath();
                     final Path scriptPath = targetDir.webBundler().resolve(destination);
                     if (!isLiveReload
-                            || liveReload.getChangedResources().contains(webAsset.resourceName())
+                            || webAsset.watchedPath().isEmpty()
+                            || liveReload.getChangedResources().contains(webAsset.watchedPath().get())
                             || !Files.exists(scriptPath)) {
-                        createAsset(watchedFiles, webAsset, scriptPath, browserLiveReload);
+                        createAsset(config, watchedFiles, webAsset, scriptPath, browserLiveReload);
                     }
                     // Manual assets are supposed to be imported by the entry point
                     if (!webAsset.type().equals(MANUAL)) {
@@ -209,9 +214,9 @@ public class PrepareForBundlingProcessor {
                                 Collectors.joining("\n"));
 
                 if (LOGGER.isDebugEnabled()) {
-                    LOGGER.debugf("Bundling '%s' (%d files):\n%s", entryPoint.getEntryPointKey(), scripts.size(), scriptsLog);
+                    LOGGER.debugf("Bundling '%s' (%d files):\n%s", entryPoint.key(), scripts.size(), scriptsLog);
                 } else {
-                    LOGGER.infof("Bundling '%s' (%d files)", entryPoint.getEntryPointKey(), scripts.size());
+                    LOGGER.infof("Bundling '%s' (%d files)", entryPoint.key(), scripts.size());
                 }
 
                 if (!scripts.isEmpty()) {
@@ -220,7 +225,7 @@ public class PrepareForBundlingProcessor {
                         scripts.add("live-reload.js");
                     }
 
-                    optionsBuilder.addAutoEntryPoint(targetDir.webBundler(), entryPoint.getEntryPointKey(), scripts,
+                    optionsBuilder.addAutoEntryPoint(targetDir.webBundler(), entryPoint.key(), scripts,
                             autoDepsMode,
                             directWebDependenciesIds::contains);
                     addedEntryPoints++;
@@ -241,24 +246,25 @@ public class PrepareForBundlingProcessor {
             final BundleOptions options = optionsBuilder.build();
             liveReload.setContextObject(PrepareForBundlingContext.class,
                     new PrepareForBundlingContext(config, installedWebDependencies.list(), entryPoints, options));
-            return new ReadyForBundlingBuildItem(options, started, targetDir.dist(), shouldWatch);
+            return new ReadyForBundlingBuildItem(options, started, targetDir.dist(), useEsbuildWatch);
         } catch (IOException e) {
             liveReload.setContextObject(PrepareForBundlingContext.class, new PrepareForBundlingContext());
             throw new UncheckedIOException(e);
         }
     }
 
-    static void createAsset(BuildProducer<HotDeploymentWatchedFileBuildItem> watchedFiles, WebAsset webAsset, Path targetPath,
+    static void createAsset(WebBundlerConfig config, BuildProducer<HotDeploymentWatchedFileBuildItem> watchedFiles,
+            WebAsset webAsset, Path targetPath,
             boolean browserLiveReload) throws IOException {
         Files.createDirectories(targetPath.getParent());
-        if (!webAsset.isFile()) {
-            Files.write(targetPath, webAsset.resource().content(), StandardOpenOption.CREATE,
+        if (webAsset.path().isEmpty()) {
+            Files.write(targetPath, webAsset.content(), StandardOpenOption.CREATE,
                     StandardOpenOption.TRUNCATE_EXISTING);
         } else {
-            if (browserLiveReload && enableBundlingWatch.get()) {
+            if (browserLiveReload && SYMLINK_AVAILABLE.get()) {
                 createSymbolicLinkOrFallback(watchedFiles, webAsset, targetPath);
             } else {
-                Files.copy(webAsset.resource().path(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+                Files.copy(webAsset.path().get(), targetPath, StandardCopyOption.REPLACE_EXISTING);
             }
         }
     }
@@ -266,31 +272,31 @@ public class PrepareForBundlingProcessor {
     static void createSymbolicLinkOrFallback(BuildProducer<HotDeploymentWatchedFileBuildItem> watchedFiles, WebAsset webAsset,
             Path targetPath) throws IOException {
         Files.deleteIfExists(targetPath);
-        final boolean srcDetected = webAsset.srcFilePath().isPresent();
-        if (srcDetected) {
+        if (webAsset.path().isEmpty() || webAsset.watchedPath().isEmpty()) {
+            return;
+        }
+        boolean restartNeeded = true;
+        if (webAsset.isSource()) {
             try {
-                Files.createSymbolicLink(targetPath, webAsset.srcFilePath().get());
-                // the default is restart for all web files, let's disable restart for this one.
-                // it will be detected by esbuild watcher
-                watchedFiles.produce(HotDeploymentWatchedFileBuildItem.builder()
-                        .setRestartNeeded(false)
-                        .setLocation(webAsset.resourceName())
-                        .build());
+                Files.createSymbolicLink(targetPath, webAsset.path().get());
+                restartNeeded = false;
             } catch (FileSystemException e) {
-                if (enableBundlingWatch.getAndSet(false)) {
+                if (SYMLINK_AVAILABLE.getAndSet(false)) {
                     LOGGER.warn(
                             "Creating a symbolic link was not authorized on this system. It is required by the Web Bundler to allow filesystem watch. As a result, Web Bundler live-reload will use a scheduler as a fallback.\n\nTo resolve this issue, please add the necessary permissions to allow symbolic link creation.");
                 }
-
-                Files.copy(webAsset.resource().path(), targetPath, StandardCopyOption.REPLACE_EXISTING);
             }
         } else {
-            if (enableBundlingWatch.getAndSet(false)) {
+            if (SYMLINK_AVAILABLE.getAndSet(false)) {
                 LOGGER.warn(
                         "The sources are necessary by the Web Bundler to allow filesystem watch. Web Bundler live-reload will use a scheduler as a fallback");
             }
-            Files.copy(webAsset.resource().path(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(webAsset.path().get(), targetPath, StandardCopyOption.REPLACE_EXISTING);
         }
+        watchedFiles.produce(HotDeploymentWatchedFileBuildItem.builder()
+                .setRestartNeeded(restartNeeded)
+                .setLocation(webAsset.watchedPath().get())
+                .build());
     }
 
     private byte[] readLiveReloadJs() throws IOException {

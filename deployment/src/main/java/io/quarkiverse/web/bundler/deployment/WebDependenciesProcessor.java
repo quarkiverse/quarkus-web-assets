@@ -5,7 +5,6 @@ import static io.mvnpm.esbuild.model.WebDependency.WebDependencyType.resolveType
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -20,6 +19,7 @@ import io.mvnpm.esbuild.model.WebDependency;
 import io.mvnpm.esbuild.model.WebDependency.WebDependencyType;
 import io.quarkiverse.web.bundler.deployment.items.EntryPointBuildItem;
 import io.quarkiverse.web.bundler.deployment.items.InstalledWebDependenciesBuildItem;
+import io.quarkiverse.web.bundler.deployment.items.ProjectRootBuildItem;
 import io.quarkiverse.web.bundler.deployment.items.WebDependenciesBuildItem;
 import io.quarkiverse.web.bundler.deployment.items.WebDependenciesBuildItem.Dependency;
 import io.quarkus.deployment.annotations.BuildStep;
@@ -58,11 +58,12 @@ class WebDependenciesProcessor {
     InstalledWebDependenciesBuildItem installDependencies(LaunchModeBuildItem launchMode,
             LiveReloadBuildItem liveReload,
             OutputTargetBuildItem outputTarget,
+            ProjectRootBuildItem projectRoot,
             WebDependenciesBuildItem webDependencies,
             WebBundlerConfig config) {
         final InstalledWebDependenciesContext installedWebDependenciesContext = liveReload
                 .getContextObject(InstalledWebDependenciesContext.class);
-        final Path nodeModulesDir = resolveNodeModulesDir(config, outputTarget);
+        final Path nodeModulesDir = resolveNodeModulesDir(config, outputTarget, projectRoot);
         if (liveReload.isLiveReload() && installedWebDependenciesContext != null
                 && WebBundlerConfig.WebDependenciesConfig.isEqual(config.dependencies(),
                         installedWebDependenciesContext.config().dependencies())
@@ -115,37 +116,20 @@ class WebDependenciesProcessor {
                 .orElse(null);
     }
 
-    private static Path resolveNodeModulesDir(WebBundlerConfig config, OutputTargetBuildItem outputTarget) {
+    private static Path resolveNodeModulesDir(WebBundlerConfig config, OutputTargetBuildItem outputTarget,
+            ProjectRootBuildItem projectRoot) {
         if (config.dependencies().nodeModules().isEmpty()) {
             return outputTarget.getOutputDirectory().resolve(BundleOptions.NODE_MODULES);
         }
-        final Path projectRoot = findProjectRoot(outputTarget.getOutputDirectory());
         final Path nodeModulesDir = Path.of(config.dependencies().nodeModules().get().trim());
         if (nodeModulesDir.isAbsolute() && Files.isDirectory(nodeModulesDir.getParent())) {
             return nodeModulesDir;
         }
-        if (projectRoot == null || !Files.isDirectory(projectRoot)) {
+        if (!projectRoot.exists() || !Files.isDirectory(projectRoot.path())) {
             throw new IllegalStateException(
                     "If not absolute, the node_modules directory is resolved relative to the project root, but Web Bundler was not able to find the project root.");
         }
-        return projectRoot.resolve(nodeModulesDir);
-    }
-
-    static Path findProjectRoot(Path outputDirectory) {
-        Path currentPath = outputDirectory;
-        do {
-            if (Files.exists(currentPath.resolve(Paths.get("src", "main")))
-                    || Files.exists(currentPath.resolve(Paths.get("config", "application.properties")))
-                    || Files.exists(currentPath.resolve(Paths.get("config", "application.yaml")))
-                    || Files.exists(currentPath.resolve(Paths.get("config", "application.yml")))) {
-                return currentPath.normalize();
-            }
-            if (currentPath.getParent() != null && Files.exists(currentPath.getParent())) {
-                currentPath = currentPath.getParent();
-            } else {
-                return null;
-            }
-        } while (true);
+        return projectRoot.path().resolve(nodeModulesDir);
     }
 
     record InstalledWebDependenciesContext(WebBundlerConfig config, Path nodeModulesDir, List<Dependency> dependencies) {

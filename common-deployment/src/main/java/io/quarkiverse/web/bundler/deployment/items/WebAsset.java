@@ -1,60 +1,43 @@
 package io.quarkiverse.web.bundler.deployment.items;
 
-import java.io.IOException;
 import java.nio.charset.Charset;
-import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 
+import io.quarkus.deployment.annotations.BuildProducer;
+import io.quarkus.deployment.builditem.HotDeploymentWatchedFileBuildItem;
+
 public interface WebAsset {
-    default String pathFromWebRoot(String root) {
-        if (!resourceName().startsWith(root)) {
-            throw new IllegalStateException("Web Bundler must be located under the root: " + root);
-        }
-        return resourceName().substring(root.endsWith("/") ? root.length() : root.length() + 1);
-    }
 
-    default boolean isFile() {
-        return this.resource().isFile();
-    }
+    String relativePath();
 
-    String resourceName();
+    Optional<String> watchedPath();
 
-    Optional<Path> srcFilePath();
+    byte[] content();
 
-    Resource resource();
+    Optional<Path> path();
+
+    boolean isSource();
 
     Charset charset();
 
-    record Resource(byte[] content, Path path) {
-
-        public Resource(byte[] content) {
-            this(content, null);
-        }
-
-        public Resource(Path path) {
-            this(null, path);
-        }
-
-        public Resource(byte[] content, Path path) {
-            if (content != null && path != null) {
-                throw new IllegalArgumentException(
-                        "if a resource has content, it means the Path should be null has it is only meant for content which can't be read anymore");
-            }
-            this.content = content;
-            this.path = path;
-        }
-
-        public byte[] contentOrReadFromFile() {
-            try {
-                return isFile() ? Files.readAllBytes(path()) : content();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        public boolean isFile() {
-            return path != null;
+    static void watchAssets(BuildProducer<HotDeploymentWatchedFileBuildItem> watchedFiles,
+            List<WebAsset> assets) {
+        for (WebAsset asset : assets) {
+            asset.watchedPath().ifPresent(s -> watchedFiles.produce(HotDeploymentWatchedFileBuildItem.builder()
+                    .setRestartNeeded(true)
+                    .setLocation(s)
+                    .build()));
         }
     }
+
+    static boolean isLocalFileSystem(Path path) {
+        try {
+            return "file".equalsIgnoreCase(path.getFileSystem().provider().getScheme());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
 }

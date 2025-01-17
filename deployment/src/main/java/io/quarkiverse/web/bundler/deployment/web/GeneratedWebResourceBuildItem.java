@@ -1,11 +1,18 @@
 package io.quarkiverse.web.bundler.deployment.web;
 
-import static io.quarkiverse.web.bundler.runtime.WebBundlerResourceHandler.META_INF_WEB;
+import java.nio.file.Path;
 
-import io.quarkiverse.web.bundler.deployment.items.WebAsset;
 import io.quarkus.builder.item.MultiBuildItem;
 
 public final class GeneratedWebResourceBuildItem extends MultiBuildItem {
+
+    public static GeneratedWebResourceBuildItem fromFile(String publicPath, Path path, SourceType type) {
+        return new GeneratedWebResourceBuildItem(publicPath, path, null, type);
+    }
+
+    public static GeneratedWebResourceBuildItem fromContent(String publicPath, byte[] content, SourceType type) {
+        return new GeneratedWebResourceBuildItem(publicPath, null, content, type);
+    }
 
     public enum SourceType {
         BUILD_TIME_TEMPLATE("build-time template", 1),
@@ -31,25 +38,27 @@ public final class GeneratedWebResourceBuildItem extends MultiBuildItem {
     }
 
     private final String publicPath;
-    private final WebAsset.Resource resource;
+    private final Path path;
+    private final byte[] content;
     private final SourceType type;
 
-    public GeneratedWebResourceBuildItem(String publicPath, WebAsset.Resource resource, SourceType type) {
+    private GeneratedWebResourceBuildItem(String publicPath, Path path, byte[] content, SourceType type) {
         this.publicPath = publicPath;
-        this.resource = resource;
+        this.path = path;
+        this.content = content;
         this.type = type;
-    }
-
-    public String resourceName() {
-        return META_INF_WEB + "/" + publicPath.replaceAll("^/", "");
     }
 
     public String publicPath() {
         return publicPath;
     }
 
-    public WebAsset.Resource resource() {
-        return resource;
+    public Path path() {
+        return path;
+    }
+
+    public byte[] content() {
+        return content;
     }
 
     public SourceType type() {

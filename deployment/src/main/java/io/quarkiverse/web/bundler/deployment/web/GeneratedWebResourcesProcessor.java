@@ -2,6 +2,7 @@ package io.quarkiverse.web.bundler.deployment.web;
 
 import static io.quarkus.deployment.annotations.ExecutionTime.RUNTIME_INIT;
 
+import java.nio.file.Files;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -16,12 +17,8 @@ import io.quarkus.deployment.IsDevelopment;
 import io.quarkus.deployment.annotations.BuildProducer;
 import io.quarkus.deployment.annotations.BuildStep;
 import io.quarkus.deployment.annotations.Record;
-import io.quarkus.deployment.builditem.GeneratedResourceBuildItem;
-import io.quarkus.deployment.builditem.LaunchModeBuildItem;
 import io.quarkus.deployment.builditem.ShutdownContextBuildItem;
-import io.quarkus.deployment.builditem.nativeimage.NativeImageResourceBuildItem;
 import io.quarkus.vertx.http.deployment.RouteBuildItem;
-import io.quarkus.vertx.http.deployment.devmode.NotFoundPageDisplayableEndpointBuildItem;
 import io.quarkus.vertx.http.deployment.spi.GeneratedStaticResourceBuildItem;
 import io.quarkus.vertx.http.runtime.HttpBuildTimeConfig;
 
@@ -31,23 +28,21 @@ public class GeneratedWebResourcesProcessor {
 
     @BuildStep
     public void processStaticFiles(
-            BuildProducer<NotFoundPageDisplayableEndpointBuildItem> notFoundPageProducer,
             List<GeneratedWebResourceBuildItem> staticResources,
-            BuildProducer<GeneratedResourceBuildItem> prodResourcesProducer,
-            BuildProducer<NativeImageResourceBuildItem> nativeImageResourcesProducer,
-            BuildProducer<GeneratedStaticResourceBuildItem> generatedStaticResourceProducer,
-            LaunchModeBuildItem launchModeBuildItem) {
+            BuildProducer<GeneratedStaticResourceBuildItem> generatedStaticResourceProducer) {
         if (staticResources.isEmpty()) {
             return;
         }
 
         for (GeneratedWebResourceBuildItem staticResource : staticResources) {
-            if (staticResource.resource().isFile()) {
-                generatedStaticResourceProducer.produce(
-                        new GeneratedStaticResourceBuildItem(staticResource.publicPath(), staticResource.resource().path()));
+            if (staticResource.path() != null) {
+                if (Files.isRegularFile(staticResource.path())) {
+                    generatedStaticResourceProducer.produce(
+                            new GeneratedStaticResourceBuildItem(staticResource.publicPath(), staticResource.path()));
+                }
             } else {
                 generatedStaticResourceProducer.produce(
-                        new GeneratedStaticResourceBuildItem(staticResource.publicPath(), staticResource.resource().content()));
+                        new GeneratedStaticResourceBuildItem(staticResource.publicPath(), staticResource.content()));
             }
         }
     }
