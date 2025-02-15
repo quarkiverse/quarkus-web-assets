@@ -1,0 +1,18 @@
+.button {
+  windth: 150px;
+  height: 50px;
+  backgroud-color: #ea0e0e0;
+  border-radius: 30px;
+  box-shadow:
+    8px 8px 15px #bebebe,
+    -8px -8px 15px #ffffff;
+  border: none;
+  cursor:pointer;
+}
+
+.button:active {
+  box-shadow:
+    inset 8px 8px 15px #bebebe,
+    inset 8px 8px 15px #ffffff;
+}
+  
